@@ -1,0 +1,21 @@
+# buat sebuah direktori di HDFS
+docker exec -it hadoop-namenode-1 hdfs dfs -mkdir /homework
+
+# define semua csvnya
+$files = @(
+    "result_1_100.csv",
+    "result_101_200.csv",
+    "result_201_300.csv"
+)
+
+# loop ke semua file dan copy ke Docker container
+foreach ($file in $files) {
+    docker cp "csv/$file" hadoop-namenode-1:/tmp/$file
+}
+
+# loop ke semua file dan upload ke HDFS
+foreach ($file in $files) {
+    docker exec -it hadoop-namenode-1 hdfs dfs -put "/tmp/$file" "/homework/$file"
+}
+
+# cara panggil /upload_files.ps1
