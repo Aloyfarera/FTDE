@@ -1,0 +1,15 @@
+version: '3.8'
+
+services:
+  dbt:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    image: xemuliam/dbt:snowflake
+    container_name: dbt-container
+    volumes:
+      - .:/app
+    environment:
+      DBT_PROFILES_DIR: /root/.dbt
+    working_dir: /app/dbt_dskola_sf
+    command: dbt run

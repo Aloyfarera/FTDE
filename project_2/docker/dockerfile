@@ -4,27 +4,19 @@ FROM python:3.9
 # Set the working directory inside the container
 WORKDIR /app
 
-# Copy all files and directories from the local directory to /app in the container
-COPY . /app
-
 # Copy the requirements.txt file into the container
 COPY requirements.txt /app
 
 # Install dbt and other dependencies from requirements.txt
 RUN apt-get update -y && \
-    apt-get install -y git && \
     pip install --upgrade pip && \
     pip install -r requirements.txt
-    
 
-# Copy the dbt project into the container
-COPY dbt_dskola_sf/ /app/dbt_dskola_sf
-
-# Set the working directory to the dbt project directory
-WORKDIR /app/dbt_dskola_sf
-
-# Set the environment variable to specify the profiles directory
-ENV DBT_PROFILES_DIR=/app
+# Copy the dbt project and profiles.yml into the container
+COPY dbt_dskola_sf /app/dbt_dskola_sf
+COPY dbt_dskola_sf/profiles.yml /root/.dbt/profiles.yml
 
 # Define the command to run when the container starts
+WORKDIR /app/dbt_dskola_sf
+
 CMD ["dbt", "run"]
