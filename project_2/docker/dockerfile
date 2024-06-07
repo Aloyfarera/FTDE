@@ -17,7 +17,5 @@ COPY dbt_dskola_sf /app/dbt_dskola_sf
 COPY dwh_scripts/ /app/dwh_scripts
 COPY dbt_dskola_sf/profiles.yml /root/.dbt/profiles.yml
 
-# Define the command to run when the container starts
+# Set the working directory for the dbt project
 WORKDIR /app/dbt_dskola_sf
-
-CMD ["dbt", "run"]
