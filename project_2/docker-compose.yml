@@ -9,6 +9,8 @@ services:
     container_name: dbt-container
     volumes:
       - .:/app
+    env_file:
+      - .dbt_env
     environment:
       DBT_PROFILES_DIR: /root/.dbt
     working_dir: /app/dbt_dskola_sf
