@@ -1,0 +1,26 @@
+version: 2
+
+sources:
+  - name: dwh_dbt_project
+    schema: public
+    tables:
+      - name: fact_order_details
+      - name: fact_orders
+      - name: dim_products
+      - name: dim_suppliers
+      - name: dim_employees
+      - name: dim_categories
+
+models:
+  - name: stg_fact_order_details
+    description: "Staging table for fact_order_details"
+  - name: stg_fact_orders
+    description: "Staging table for fact_orders"
+  - name: stg_dim_products
+    description: "Staging table for dim_products"
+  - name: stg_dim_suppliers
+    description: "Staging table for dim_suppliers"
+  - name: stg_dim_categories
+    description: "Staging table for dim_categories"
+  - name: stg_dim_employees
+    description: "Staging table for dim_employees"
