@@ -14,6 +14,7 @@ RUN apt-get update -y && \
 
 # Copy the dbt project and profiles.yml into the container
 COPY dbt_dskola_sf /app/dbt_dskola_sf
+COPY dwh_scripts/ /app/dwh_scripts
 COPY dbt_dskola_sf/profiles.yml /root/.dbt/profiles.yml
 
 # Define the command to run when the container starts
