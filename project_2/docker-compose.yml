@@ -14,4 +14,4 @@ services:
     environment:
       DBT_PROFILES_DIR: /root/.dbt
     working_dir: /app/dbt_dskola_sf
-    command: dbt run
+    command: tail -f /dev/null
