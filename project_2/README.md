@@ -1,4 +1,4 @@
-# DIGITAL SKOLA DBT-SNWOFLAKE 
+# DIGITAL SKOLA DBT-SNOWFLAKE 
 
 ## Overview
 This project aims to transform and load raw data into a data warehouse using Snowflake as the target database. The transformation and data warehouse creation will be implemented using dbt (Data Build Tool). Data marts will be created for reporting purposes.
