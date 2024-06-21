@@ -4,13 +4,8 @@ COPY requirements.txt /opt/airflow/
 
 USER root
 
-RUN apt-get update && \
-    apt-get install -y gcc python3-dev openjdk-11-jdk && \
-    apt-get clean && \ 
-    apt install nano  
-# Set JAVA_HOME environment variable
-ENV JAVA_HOME /usr/lib/jvm/java-11-openjdk-arm64
-
+RUN apt-get update  && apt-get install -y gcc python3-dev
+ 
 USER airflow
 RUN pip install --upgrade pip
 RUN pip install --no-cache-dir -r /opt/airflow/requirements.txt

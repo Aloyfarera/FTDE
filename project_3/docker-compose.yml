@@ -1,11 +1,7 @@
 version: '3'
 
-x-spark-common: &spark-common
-  image: bitnami/spark:latest
-  volumes:
-    - ./jobs:/opt/bitnami/spark/jobs
-
-x-airflow-common: &airflow-common
+x-airflow-common:
+  &airflow-common
   build:
     context: .
     dockerfile: Dockerfile
@@ -22,37 +18,19 @@ x-airflow-common: &airflow-common
     - ./plugins:/opt/airflow/plugins
     - ./tests:/opt/airflow/tests
     - ./utils:/opt/airflow/utils
-   # - ./airflow.cfg:/opt/airflow/airflow.cfg
+    #- ./airflow.cfg:/opt/airflow/airflow.cfg
     - ./requirements.txt:/opt/airflow/requirements.txt
   depends_on:
     - postgres
     - redis
 
 services:
-  spark-master:
-    <<: *spark-common
-    command: bin/spark-class org.apache.spark.deploy.master.Master
-    ports:
-      - "9090:8081"
-      - "7077:7077"
-
-  spark-worker:
-    <<: *spark-common
-    command: bin/spark-class org.apache.spark.deploy.worker.Worker spark://spark-master:7077
-    depends_on:
-      - spark-master
-    environment:
-      SPARK_MODE: worker
-      SPARK_WORKER_CORES: 2
-      SPARK_WORKER_MEMORY: 1g
-      SPARK_MASTER_URL: spark://spark-master:7077
-
   postgres:
     image: postgres:12
     environment:
-      POSTGRES_USER: postgres_airflow
-      POSTGRES_PASSWORD: postgres_airflow
-      POSTGRES_DB: airflow_dskola
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: airflow_dskola_3
       POSTGRES_PORT: 5432
     ports:
       - "5431:5432"
@@ -83,3 +61,6 @@ services:
   airflow-worker:
     <<: *airflow-common
     command: celery worker
+
+
+    
