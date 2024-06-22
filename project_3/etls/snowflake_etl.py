@@ -1,5 +1,5 @@
 import pandas as pd
-from sqlalchemy import create_engine
+import psycopg2
 from snowflake.connector.cursor import SnowflakeCursor,ProgrammingError
 import snowflake.connector
 import os 
@@ -7,11 +7,20 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 dag_file_path = os.path.dirname(os.path.abspath(__file__))
-from config import *
+from utils.config import *
 from utils.creds_sf import *
 
 # PostgreSQL connection setup
-pg_engine = create_engine('postgresql+psycopg2://postgres:postgres@localhost:5431/airflow_dskola_db')
+db_params = {
+        "host": "localhost",
+        "port": 5431,
+        "database": "airflow_dskola_db",
+        "user": "postgres",
+        "password": "postgres"
+    }
+    
+# Connect to PostgreSQL
+conn_ps = psycopg2.connect(**db_params)
 
 ctx = snowflake.connector.connect(
     user=USER,
@@ -23,7 +32,7 @@ ctx = snowflake.connector.connect(
     role = ROLE
     )
 
-def transform_dm_supplier_revenue():
+def tf_dm_supplier_revenue():
     # Extract data from PostgreSQL
     query = """
     WITH supplier_revenue AS (
@@ -47,10 +56,10 @@ def transform_dm_supplier_revenue():
     FROM
       supplier_revenue;
     """
-    df = pd.read_sql_query(query, pg_engine)
-    df.to_csv('data/supplier_revenue.csv', index=False)
+    df = pd.read_sql_query(query,conn_ps)
+    df.to_csv('data/dm_supplier_revenue.csv', index=False)
 
-def transform_dm_top_employee_revenue():
+def tf_dm_top_employee_revenue():
     # Extract data from PostgreSQL
     query ="""
     WITH employee_revenue AS (
@@ -85,10 +94,10 @@ def transform_dm_top_employee_revenue():
       rank = 1;
     """
 
-    df = pd.read_sql_query(query, pg_engine)
-    df.to_csv('data/top_employee_revenue.csv', index=False)
+    df = pd.read_sql_query(query,conn_ps)
+    df.to_csv('data/dm_top_employee_revenue.csv', index=False)
 
-def transform_dm_top_category_sales():
+def tf_dm_top_category_sales():
     # Extract data from PostgreSQL
     query = """
     WITH category_sales AS (
@@ -123,92 +132,77 @@ def transform_dm_top_category_sales():
       rank = 1;
     """
 
-    df = pd.read_sql_query(query, pg_engine)
-    df.to_csv('data/top_category_sales.csv', index=False)
+    df = pd.read_sql_query(query,conn_ps)
+    df.to_csv('data/dm_top_category_sales.csv', index=False)
+
+def create_snowflake_tables(conn, table_creation_queries):
+    cursor = ctx.cursor(SnowflakeCursor)  # Specify SnowflakeCursor type
+    cursor.execute(f'''use database DWH_AIRFLOW_DSKOLA''') 
+    for table_name, creation_query in table_creation_queries.items():
+        cur.execute(f"""{creation_query}""")
+        print(f"Table {table_name} created or replaced successfully.")
+        
+
+def load_csv_to_snowflake_staging():
+    cursor = ctx.cursor(SnowflakeCursor)  # Specify SnowflakeCursor type
+    cursor.execute(f'''use database DWH_AIRFLOW_DSKOLA''')
+    # Get list of CSV files in the directory
+    data_dir = "data/"
+    csv_files = [f for f in os.listdir(data_dir) if f.startswith("dm")]  #
+
+    for file_name in csv_files:
+       
+        file_path = os.path.join(data_dir, file_name)
+
+        # Upload data to temporary location
+        cursor.execute(f"PUT 'file://{file_path}' @from_postgres auto_compress=true;")
+        print(f"Uploaded {file_name} to Snowflake staging")
+
+    # Close the cursor
+    cursor.close()
+    print("All CSV files processed.")
 
 def load_to_snowflake():
 
     # Create a Snowflake cursor
     cursor = ctx.cursor(SnowflakeCursor)
     # Paths to CSV files for each data mart
-    csv_files = {
-        'supplier_revenue': 'data/supplier_revenue.csv',
-        'top_employee_revenue': 'data/top_employee_revenue.csv',
-        'top_category_sales': 'data/top_category_sales.csv'
-    }
+    tables = [
+    {"table_name": "DM_MONTHLY_SUPPLIER_GROSS_REVENUE", "pattern": ".*supplier_revenue.*"},
+    {"table_name": "DM_TOP_EMPLOYEE_REVENUE", "pattern": ".*employee_revenue.*"},
+    {"table_name": "DM_TOP_CATEGORY_SALES", "pattern": ".*category_sales.*"}
+    ]
 
-    try:
-        # Iterate through each data mart
-        for table_name, csv_file_path in csv_files.items():
-            # Read CSV into DataFrame
-            df = pd.read_csv(csv_file_path)
+    cursor.execute(f'''use database DWH_AIRFLOW_DSKOLA''')
+
+    # Create tables
+    for table_name, creation_query in table_creation_queries.items():
+          cursor.execute(f"""{creation_query}""")
+          print(f"Table {table_name} created or replaced successfully.")
+
+    # Loop through each table dictionary
+    for table in tables:
+        table_name = table["table_name"]
+        pattern = table["pattern"]
+
+        # Load data using COPY INTO
+        try:
+            cursor.execute(f"""
+                           copy into {table_name} 
+                           from (select distinct * from @from_postgres t) 
+                           file_format = allow_duplicate_ff 
+                           on_error = 'CONTINUE' 
+                           pattern='{pattern}'
+                           force = false;
+                           """) 
             
-            # Ensure column names match Snowflake table
-            df.columns = df.columns.str.upper()  # Make column names uppercase to match table schema
+            print(f"Loaded data into table: {table_name}")
+        except snowflake.connector.Error as err:
+            print(f"Error encountered for table {table_name}: {err}")
 
-            # Create a Snowflake cursor
-            cursor = ctx.cursor(SnowflakeCursor)
-            
-            # Create the target table in Snowflake
-            create_table_query = table_creation_queries[table_name]
-            cursor.execute(create_table_query)
-
-            # Put the CSV data into a stage
-            stage_name = f"stg_{table_name}"
-            stage_location = f"@%{stage_name}"
-            cursor.execute(f"CREATE OR REPLACE STAGE {stage_name}")
-            cursor.execute(f"PUT file://{os.path.abspath(csv_file_path)} {stage_location}")
-
-            # Copy data from stage to Snowflake table
-            copy_into_query = f"""
-            COPY INTO DM_{table_name.upper()}
-            FROM {stage_location}
-            FILE_FORMAT = (TYPE = CSV FIELD_OPTIONALLY_ENCLOSED_BY = '"' SKIP_HEADER = 1)
-            """
-            cursor.execute(copy_into_query)
-
-            # Close the cursor
-            cursor.close()
-            print(f"Data loaded to Snowflake table DM_{table_name.upper()} successfully.")
-
-    except ProgrammingError as e:
-        print(f"Snowflake error: {e}")
-
-    finally:
-        # Close Snowflake connection
-        cursor.close()
-    
-    
-
-# def load_to_snowflake():
-#     # Convert DataFrame to CSV
-#     csv_file_path = "data/supplier_revenue.csv"
-
-#     # Create a Snowflake cursor
-#     cursor = ctx.cursor(SnowflakeCursor) 
-    
-#     # Create the target table in Snowflake
-#     cursor.execute("""
-#     CREATE OR REPLACE TABLE supplier_revenue (
-#         company_name STRING,
-#         month_order DATE,
-#         gross_revenue FLOAT
-#     )
-#     """)
-    
-#     # Put the CSV data into a stage
-#     cursor.execute(f"PUT file://{csv_file_path} @%supplier_revenue")
-    
-#     # Copy data from stage to Snowflake table
-#     cursor.execute("""
-#     COPY INTO supplier_revenue
-#     FROM @%supplier_revenue
-#     FILE_FORMAT = (TYPE = CSV FIELD_OPTIONALLY_ENCLOSED_BY = '"' SKIP_HEADER = 1);
-#     """)
-    
-#     # Close the cursor
-#     cursor.close()
-#     print("Data loaded to Snowflake successfully.")
+    # Close the cursor
+    cursor.close()
+    print("All CSV files processed.")
 
 
 

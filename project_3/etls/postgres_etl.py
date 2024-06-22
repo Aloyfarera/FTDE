@@ -4,6 +4,7 @@ import os
 import sys
 from sqlalchemy import create_engine
 from sqlalchemy.exc import SQLAlchemyError
+import psycopg2
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 dag_file_path = os.path.dirname(os.path.abspath(__file__))
@@ -53,8 +54,17 @@ def extract_csv():
 
 def load_to_postgres():
     # Define the connection to PostgreSQL
-    engine = create_engine('postgresql+psycopg2://postgres:postgres@localhost:5431/airflow_dskola_db')
+
+    db_params = {
+        "host": "localhost",
+        "port": 5431,
+        "database": "airflow_dskola_db",
+        "user": "postgres",
+        "password": "postgres"
+    }
     
+    # Connect to PostgreSQL
+    conn = psycopg2.connect(**db_params)
     # List of dictionaries containing table names and file patterns
     tables = [
         {"table_name": "dim_categories", "csv_file": "categories.csv"},
@@ -74,9 +84,10 @@ def load_to_postgres():
             # Read the CSV file
             df = pd.read_csv(f"data/{csv_file}")
             df.columns = df.columns.str.lower()
-             # Get existing data from PostgreSQL
-            existing_data = pd.read_sql_table(table_name, engine)
-            
+            # Get existing data from PostgreSQL
+            #existing_data = pd.read_sql_table(table_name, engine)
+            query = f"SELECT * FROM public.{table_name}"
+            existing_data = pd.read_sql(query, conn)
             # Get unique key for the table
             unique_key = get_unique_key(table_name)
             # Handle deduplication using single key
@@ -91,11 +102,18 @@ def load_to_postgres():
                 new_keys = df[['orderid', 'productid']]
                 merged_keys = pd.merge(new_keys, existing_keys, how='left', indicator=True)
                 unique_data = df[merged_keys['_merge'] == 'left_only']
+                unique_data = unique_data[['detailid', 'orderid', 'productid', 'unitprice', 'quantity', 'discount']]
             else:
                 # Handle deduplication using single key
-                unique_data = deduplicate_data(df, existing_data, unique_key) 
-            # Insert deduplicated data into PostgreSQL
-            unique_data.to_sql(table_name, engine, schema='public', if_exists='append', index=False)
+                unique_data = deduplicate_data(df, existing_data, unique_key)
+            
+            print(unique_data.head(5))
+            with conn.cursor() as cur:
+                for row in unique_data.itertuples(index=False, name=None):
+                    placeholders = ', '.join(['%s'] * len(row))
+                    insert_query = f"INSERT INTO public.{table_name} VALUES ({placeholders})"
+                    cur.execute(insert_query, row)
+                conn.commit()
         except (FileNotFoundError, pd.errors.ParserError) as file_err:
             print(f"Error reading CSV file {csv_file}: {file_err}")
         except SQLAlchemyError as db_err:
